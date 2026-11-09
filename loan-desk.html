@@ -218,6 +218,14 @@ tr.confirm td{background:var(--bad-soft)}
 .form-foot{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end;padding:14px 18px;border-top:1px solid var(--line)}
 .member-list{display:grid;gap:10px}
 .member-list:empty{display:none}
+.field:has(.date-box){align-content:start}
+.date-box{position:relative;display:flex;gap:6px}
+.date-box .date-text{flex:1;min-width:0;font-variant-numeric:tabular-nums}
+.date-btn{flex:none;width:36px;border:1px solid var(--line-strong);background:var(--surface);border-radius:3px;color:var(--muted);cursor:pointer;display:grid;place-items:center}
+.date-btn:hover{color:var(--ink);background:var(--sunken)}
+.date-btn:disabled,.date-text:disabled{opacity:.5;cursor:not-allowed}
+.date-native{position:absolute;right:0;bottom:0;width:36px;height:1px;opacity:0;pointer-events:none;border:0;padding:0}
+.open-end{margin-top:6px}
 .member-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .member-name{display:flex;gap:6px}
 .member-name input{flex:1;min-width:0}
@@ -427,8 +435,9 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
                 <div class="field"><label for="lnCourse">Course</label><input type="text" id="lnCourse" placeholder="Type a course name or code"></div>
               </div>
               <div class="row2">
-                <div class="field"><label for="lnStart">Start date</label><input type="date" id="lnStart" required></div>
-                <div class="field"><label for="lnEnd">End date (return by)</label><input type="date" id="lnEnd" required></div>
+                <div class="field"><label for="lnStartText">Start date</label><div class="date-box"><input type="text" id="lnStartText" class="date-text" inputmode="numeric" placeholder="dd.mm.yyyy" autocomplete="off"><button type="button" class="date-btn" data-cal="lnStart" title="Pick a date" aria-label="Pick start date from a calendar"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2 6.5h12M5 1.8v2.6M11 1.8v2.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button><input type="date" id="lnStart" class="date-native" tabindex="-1" aria-hidden="true"></div></div>
+                <div class="field"><label for="lnEndText">End date (return by)</label><div class="date-box"><input type="text" id="lnEndText" class="date-text" inputmode="numeric" placeholder="dd.mm.yyyy" autocomplete="off"><button type="button" class="date-btn" data-cal="lnEnd" title="Pick a date" aria-label="Pick end date (return by) from a calendar"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2 6.5h12M5 1.8v2.6M11 1.8v2.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button><input type="date" id="lnEnd" class="date-native" tabindex="-1" aria-hidden="true"></div>
+                  <label class="check open-end"><input type="checkbox" id="lnOpenEnd"> No fixed return date</label></div>
               </div>
               <div class="field"><label for="lnNotes">Notes</label><textarea id="lnNotes" rows="2" placeholder="Optional, not printed on the record"></textarea></div>
             </div>
@@ -499,6 +508,18 @@ const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d
 const fmtDate = iso => { if (!iso) return ''; const [y,m,d] = iso.split('-'); return `${+d}.${+m}.${y}`; };
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
 const int = v => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : 0; };
+// A loan without an end date has no fixed return date.
+const dueText = l => l.endDate ? fmtDate(l.endDate) : 'No fixed date';
+// Accepts 5.11.2026, 05.11.26, 5/11/2026, 5-11-2026 or 5,11,2026; returns yyyy-mm-dd or ''.
+function parseDmy(t) {
+  const m = String(t || '').trim().match(/^(\d{1,2})\s*[.,/-]\s*(\d{1,2})\s*[.,/-]\s*(\d{2}|\d{4})$/); if (!m) return '';
+  const y = m[3].length === 2 ? 2000 + +m[3] : +m[3], mo = +m[2], d = +m[1];
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return '';
+  return dt.toISOString().slice(0, 10);
+}
+const pad2 = n => String(n).padStart(2, '0');
+const dmy = iso => { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${pad2(+d)}.${pad2(+m)}.${y}`; };
 const safeFile = s => String(s || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'loan';
 
 let toastTimer;
@@ -1110,7 +1131,7 @@ function describeChange(col, old, body) {
   const l = body || old || {}, head = `${l.ref || ''} ${l.names || ''}`.trim();
   const units = it => (it || []).reduce((a, i) => a + (i.qty || 0), 0), back = it => (it || []).reduce((a, i) => a + (i.returnedQty || 0), 0);
   if (!body) return { action: 'Loan deleted', text: head };
-  if (!old) return { action: 'Loan created', text: `${head}: ${(body.items || []).map(i => `${i.qty} × ${i.name}`).join(', ')}; due ${fmtDate(body.endDate)}` };
+  if (!old) return { action: 'Loan created', text: `${head}: ${(body.items || []).map(i => `${i.qty} × ${i.name}`).join(', ')}; due ${dueText(body)}` };
   if (old.status !== 'returned' && body.status === 'returned') return { action: 'Loan returned', text: `${head}: all ${units(body.items)} unit(s) back` };
   if (old.status === 'returned' && body.status !== 'returned') return { action: 'Loan reopened', text: `${head}: ${back(body.items)} of ${units(body.items)} back` };
   if (back(old.items) !== back(body.items)) return { action: 'Return check', text: `${head}: ${back(body.items)} of ${units(body.items)} back` };
@@ -1662,7 +1683,7 @@ function renderDraft() {
 $('#draftTable').addEventListener('click', e => { const b = e.target.closest('[data-rm]'); if (!b) return; S.draft = S.draft.filter(d => d.key !== b.dataset.rm); renderPicker(); renderDraft(); });
 function resetLoanForm() {
   $('#loanForm').reset(); S.draft = [];
-  $('#lnStart').value = todayISO(); $('#lnEnd').value = addDays(todayISO(), 14); $('#lnEnd').min = todayISO();
+  setOpenEnd(false); $('#lnStart').value = todayISO(); $('#lnEnd').value = addDays(todayISO(), 14); $('#lnEnd').min = todayISO();
   $('#memberList').innerHTML = '';
   renderPicker(); renderDraft();
   for (const i of document.querySelectorAll('.num-step input[type=number]')) syncStepButtons(i);
@@ -1789,11 +1810,11 @@ async function fillFromRequest(file) {
   if (people.length > 1) report.notes.push(`${people.length} borrowers: ${people.join(', ')}.`);
   if (f.teacher) $('#lnNotes').value = `Teacher: ${f.teacher}`;
   if (f.start) $('#lnStart').value = f.start;
-  if (f.end) $('#lnEnd').value = f.end;
+  if (f.end) $('#lnEnd').value = f.end; else setOpenEnd(true);
   $('#lnEnd').min = $('#lnStart').value;
-  if ($('#lnEnd').value < $('#lnStart').value) { $('#lnEnd').value = addDays($('#lnStart').value, 14); report.notes.push('The end date was before the start date, so it was set to two weeks after the start.'); }
+  if (f.end && $('#lnEnd').value < $('#lnStart').value) { $('#lnEnd').value = addDays($('#lnStart').value, 14); report.notes.push('The end date was before the start date, so it was set to two weeks after the start.'); }
   if (!f.start) report.notes.push('No start date in the form; today is used.');
-  if (!f.end) report.notes.push('No end date in the form; two weeks from the start is used.');
+  if (!f.end) report.notes.push('No end date in the form, so “No fixed return date” is ticked. Untick it to set a date.');
   for (const ln of lines) {
     const it = matchDevice(ln.name);
     if (!it) { report.missing.push(`${ln.name} (${ln.qty})`); continue; }
@@ -1830,10 +1851,12 @@ function makeRef(start) {
 }
 $('#loanForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const names = $('#lnNames').value.trim(), start = $('#lnStart').value, end = $('#lnEnd').value;
+  const openEnd = $('#lnOpenEnd').checked;
+  const names = $('#lnNames').value.trim(), start = $('#lnStart').value, end = openEnd ? '' : $('#lnEnd').value;
   if (!names) { toast('Enter the borrower name.', 'bad'); return; }
-  if (!start || !end) { toast('Set both the start and end date.', 'bad'); return; }
-  if (end < start) { toast('End date is before the start date.', 'bad'); return; }
+  if (!start) { toast('Set the start date.', 'bad'); return; }
+  if (!end && !openEnd) { toast('Set the end date, or tick “No fixed return date”.', 'bad'); return; }
+  if (end && end < start) { toast('End date is before the start date.', 'bad'); return; }
   if (!S.draft.length) { toast('Add at least one device to the loan.', 'bad'); return; }
   for (const d of S.draft) { const it = S.inv.get(d.itemId); if (!it) { toast(`${d.name} is no longer in the inventory.`, 'bad'); return; } }
   const id = uid(), members = formMembers();
@@ -1856,7 +1879,7 @@ function renderSaved() {
   const box = $('#savedBox'), l = S.lastSaved;
   if (!l) { box.innerHTML = ''; return; }
   const cur = S.loans.get(l.id) || l, to = loanEmails(cur).join(', ');
-  box.innerHTML = `<div class="saved"><p><b>Loan saved for ${esc(l.names)}.</b> Ref <span class="serial">${esc(l.ref)}</span> · ${l.items.reduce((a, i) => a + i.qty, 0)} unit(s), due back ${fmtDate(l.endDate)}.</p>
+  box.innerHTML = `<div class="saved"><p><b>Loan saved for ${esc(l.names)}.</b> Ref <span class="serial">${esc(l.ref)}</span> · ${l.items.reduce((a, i) => a + i.qty, 0)} unit(s), ${l.endDate ? `due back ${fmtDate(l.endDate)}` : 'no fixed return date'}.</p>
     <div class="actions"><button class="btn primary" data-exp="pdf">Download PDF</button><button class="btn" data-exp="xlsx">Download Excel</button>
     <button class="btn" data-exp="print">Print</button>
     <button class="btn" data-exp="email" ${to ? `title="Send the Excel record to ${esc(to)}"` : 'disabled title="No email address in the Contact field"'}>Email to borrower</button>
@@ -1897,7 +1920,7 @@ function renderLoans() {
     return [l.names, l.group, l.course, l.ref, l.contact, ...(l.items || []).flatMap(i => [i.name, i.serial])].some(x => (x || '').toLowerCase().includes(q));
   }).sort((a, b) => {
     if (S.loanFilter === 'returned') return (b.returnedAt || '').localeCompare(a.returnedAt || '');
-    return (a.endDate || '').localeCompare(b.endDate || '') || (b.createdAt || '').localeCompare(a.createdAt || '');
+    return (a.endDate || '9999').localeCompare(b.endDate || '9999') || (b.createdAt || '').localeCompare(a.createdAt || '');
   });
   if (!list.length) {
     const what = { open: 'No equipment is out right now.', overdue: 'Nothing is overdue.', returned: 'No returned loans yet.', all: 'No loans match.' }[S.loanFilter];
@@ -1910,7 +1933,7 @@ function renderLoans() {
       return `<tr class="clickable ${S.openLoan === l.id ? 'selected' : ''}" data-loan="${l.id}" tabindex="0">
         <td><div class="dev-name">${esc(l.names)}</div><div class="dev-cat mono">${esc(l.ref || '')}</div></td>
         <td>${esc([l.group, l.course].filter(Boolean).join(' · ')) || '<span class="muted">–</span>'}</td>
-        <td class="mono">${fmtDate(l.startDate)}</td><td class="mono">${fmtDate(l.endDate)}</td>
+        <td class="mono">${fmtDate(l.startDate)}</td><td class="mono">${l.endDate ? fmtDate(l.endDate) : '<span class="muted">No fixed date</span>'}</td>
         <td class="num mono">${l.status === 'returned' ? 0 : out} / ${total}</td><td>${chip(loanState(l))}</td></tr>`;
     }).join('')}</tbody></table></div>`;
 }
@@ -1942,7 +1965,7 @@ function renderDetail() {
       ${l.group ? `<dt>Group</dt><dd>${esc(l.group)}</dd>` : ''}
       ${l.course ? `<dt>Course</dt><dd>${esc(l.course)}</dd>` : ''}
       <dt>Start</dt><dd class="mono">${fmtDate(l.startDate)}</dd>
-      <dt>Due</dt><dd class="mono">${fmtDate(l.endDate)}</dd>
+      <dt>Due</dt><dd class="mono">${dueText(l)}</dd>
       ${l.returnedAt ? `<dt>Returned</dt><dd class="mono">${fmtDate(l.returnedAt)}</dd>` : ''}
       ${l.members && l.members.length > 1 ? `<dt>Members</dt><dd>${l.members.map(m => esc(m.name)).join('<br>')}</dd>${l.contact ? `<dt>Contact</dt><dd>${esc(l.contact)}</dd>` : ''}` : l.contact ? `<dt>Contact</dt><dd>${esc(l.contact)}</dd>` : ''}
       ${l.notes ? `<dt>Notes</dt><dd>${esc(l.notes)}</dd>` : ''}
@@ -2076,7 +2099,7 @@ function drawLoanPage(doc, l, rows, offset, page, pages) {
   doc.text(fit(l.group, R - C1 - 12), C1 + 6, Y.group + 15);
   doc.text(fit(l.course, R - C1 - 12), C1 + 6, Y.course + 15);
   doc.text(fmtDate(l.startDate), C1 + 6, Y.start + 15);
-  doc.text(fmtDate(l.endDate), C1 + 6, Y.end + 15);
+  doc.text(dueText(l), C1 + 6, Y.end + 15);
   for (let i = 0; i < 10; i++) {
     const y = Y.rows + RH * i, it = rows[i];
     doc.text(String(offset + i + 1), L + 6, y + 14);
@@ -2125,10 +2148,10 @@ function loanEmailBody(l) {
     'Here is the record of the ICT Laboratory equipment you have borrowed.', '',
     `Loan reference: ${l.ref || ''}`,
     `Start date: ${fmtDate(l.startDate)}`,
-    `Return by: ${fmtDate(l.endDate)}`, '',
+    `Return by: ${dueText(l)}`, '',
     'Equipment:',
     ...(l.items || []).map((it, i) => `${i + 1}. ${it.name} – ${it.qty} pcs${it.serial ? ` (serial ${it.serial})` : ''}`), '',
-    `Please return all equipment to the ICT Laboratory by ${fmtDate(l.endDate)}.`,
+    l.endDate ? `Please return all equipment to the ICT Laboratory by ${fmtDate(l.endDate)}.` : 'Please return all equipment to the ICT Laboratory when you no longer need it.',
   ];
   return lines.join('\r\n');
 }
@@ -2179,7 +2202,7 @@ async function buildXlsx(l) {
   ws.mergeCells(t, 1, t, 4); ws.getCell(t, 1).font = { name: 'Calibri', size: 15, bold: true };
   for (const [k, v] of [['Name(s)', l.names], ['Group', l.group], ['Course', l.course]]) { const x = addRow([k, v || ''], { bold: [1] }); ws.mergeCells(x, 2, x, 4); }
   addRow(['Start Date', fmtDate(l.startDate), 'Signature', ''], { bold: [1, 0, 1], align: [0, 0, right] });
-  addRow(['End Date', fmtDate(l.endDate), 'Signature', ''], { bold: [1, 0, 1], align: [0, 0, right] });
+  addRow(['End Date', dueText(l), 'Signature', ''], { bold: [1, 0, 1], align: [0, 0, right] });
   const blank = addRow([]); ws.mergeCells(blank, 1, blank, 4);
   addRow(['Item', 'Device/Component name', 'Serial number', 'Number of components'], { bold: [1, 1, 1, 1], align: [ctr, 0, ctr, ctr] });
   const items = l.items || [], n = Math.max(10, items.length);
@@ -2560,10 +2583,36 @@ function renderDirInfo() {
   const n = S.borrowers.size; $('#dirInfo').textContent = n ? `${n} people in the borrower list` : '';
 }
 
+for (const id of ['lnStart', 'lnEnd']) {
+  const nat = $('#' + id), txt = $('#' + id + 'Text');
+  // any change to the date (typed, picked or set by the app) shows up as dd.mm.yyyy
+  const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  Object.defineProperty(nat, 'value', { get() { return desc.get.call(this); }, set(v) { desc.set.call(this, v); txt.value = dmy(desc.get.call(this)); } });
+  txt.addEventListener('change', () => {
+    const t = txt.value.trim();
+    if (!t) { nat.value = ''; nat.dispatchEvent(new Event('change')); return; }
+    const iso = parseDmy(t);
+    if (!iso) { toast('Write the date as dd.mm.yyyy, for example 24.11.2026.', 'bad'); txt.value = dmy(nat.value); return; }
+    nat.value = iso; nat.dispatchEvent(new Event('change'));
+  });
+  nat.addEventListener('change', () => { txt.value = dmy(nat.value); });
+}
+document.querySelector('#loanForm').addEventListener('click', e => {
+  const b = e.target.closest('[data-cal]'); if (!b) return;
+  const nat = $('#' + b.dataset.cal);
+  try { nat.showPicker(); } catch (err) { $('#' + b.dataset.cal + 'Text').focus(); }
+});
+function setOpenEnd(on) {
+  $('#lnOpenEnd').checked = on;
+  $('#lnEndText').disabled = on; document.querySelector('[data-cal="lnEnd"]').disabled = on;
+  if (on) $('#lnEndText').value = ''; else $('#lnEnd').value = $('#lnEnd').value || addDays($('#lnStart').value || todayISO(), 14);
+  $('#lnEndText').placeholder = on ? 'No fixed date' : 'dd.mm.yyyy';
+}
+$('#lnOpenEnd').addEventListener('change', e => setOpenEnd(e.target.checked));
 $('#lnStart').addEventListener('change', () => {
   const st = $('#lnStart').value, en = $('#lnEnd');
   en.min = st || '';
-  if (st && (!en.value || en.value < st)) { en.value = addDays(st, 14); toast('End date moved to two weeks after the start date.'); }
+  if (st && !$('#lnOpenEnd').checked && (!en.value || en.value < st)) { en.value = addDays(st, 14); toast('End date moved to two weeks after the start date.'); }
 });
 $('#lnEnd').addEventListener('change', () => {
   const st = $('#lnStart').value, en = $('#lnEnd');

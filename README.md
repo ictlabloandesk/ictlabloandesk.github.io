@@ -31,6 +31,8 @@ It keeps track of the lab's devices, records who has borrowed what, produces the
 - **Remove someone from the borrower list**: press the **×** next to a name in the suggestions (or highlight it with ↓ / ↑ and press Delete), then **Remove**. Their loans are kept; the removal is listed on the History page. Importing a list again brings them back if they are in it.
 - **Group suggestions**: click the Group box to see ICNS23, ICNS24, ICNS25, ICNS26 and TITE/ICT Program Team, or type to filter. Other groups typed in earlier loans are suggested too.
 - **Course suggestions**: type a course name or code (for example "iot" or "IC10028") to pick a course from the ICT curriculum. Courses typed in earlier loans are suggested too.
+- Dates are written as **dd.mm.yyyy** (5.11.2026, 05.11.26, 5/11/2026 and 5,11,2026 also work); the calendar button next to each date opens a date picker.
+- **No fixed return date**: tick it under End date when there is no known return date. The loan then has no due date, is never shown as overdue, and the loan record, loan page and email say "No fixed date". A request form with an empty End Date ticks it automatically.
 - The end date can't be before the start date. Moving the start date past the end date moves the end date to two weeks after the start.
 - Pick devices from the inventory with number and serial number. You can't lend more than is available.
 - **Fill from request form** (top right): upload a filled-in copy of the lab's "ICT Laboratory Equipment Loan Request Form" (Excel). The form is filled in for you: Full Name, Group, Course, Email, Start and End date, the teacher (into Notes) and the devices with serial numbers and numbers. Devices are matched to the inventory by name, even when written a little differently, and limited to what is available. Several names in Full Name (separated by commas, "and" or new lines) become separate members. The Email row is used as the loan's email; if it is empty, the first person's email is taken from the borrower list. A summary shows what was added, which devices were not found or not available, and anything else to check. Nothing is saved until you press **Save loan**; the normal way of creating a loan is unchanged.
@@ -157,6 +159,7 @@ The app uses [jsPDF](https://github.com/parallax/jsPDF) for PDF files and [Excel
 
 New features are listed here, newest first.
 
+- **2026-11-09**: New loan dates in dd.mm.yyyy with a calendar button; "No fixed return date" option.
 - **2026-11-06**: Project members are names only; one email per loan.
 - **2026-11-06**: Several borrowers per loan (+ Add member) for project groups; Fill from request form reads the new request form (Full Name, Email) and several names.
 - **2026-11-06**: Fill from request form: upload a filled-in loan request (Excel) to fill in the New loan form.
