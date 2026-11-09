@@ -308,6 +308,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
     <div class="tools">
       <button class="tool" id="usersBtn" type="button" hidden><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M1.5 14c.4-2.7 2.2-4.2 4.5-4.2s4.1 1.5 4.5 4.2M11 3.2a2.4 2.4 0 010 4.6M12.6 9.9c1.1.6 1.8 1.9 2 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Users</button>
       <button class="tool" id="storageBtn" type="button" hidden></button>
+      <button class="tool" id="folderBtn" type="button" hidden title="Where exported PDF and Excel files are saved"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.8 4.2c0-.7.5-1.2 1.2-1.2h3.2l1.5 1.6h5.3c.7 0 1.2.5 1.2 1.2v6.4c0 .7-.5 1.2-1.2 1.2H3c-.7 0-1.2-.5-1.2-1.2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span id="folderBtnText">Save folder</span></button>
       <button class="tool" id="themeBtn" type="button" title="Switch between automatic, light and dark theme"></button>
     </div>
   </aside>
@@ -352,6 +353,13 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
         <div class="panel-head"><h2>Your account</h2><button class="btn small" type="button" id="accountClose">Close</button></div>
         <p id="accountText"></p>
         <div class="actions" style="margin-top:12px"><button class="btn danger" type="button" id="logoutBtn">Sign out</button><span class="sheet-note" id="accountMsg"></span></div>
+      </section>
+
+      <!-- SAVE FOLDER (browsers with folder access, e.g. Chrome and Edge) -->
+      <section id="folderPanel" class="panel" hidden style="margin-bottom:20px">
+        <div class="panel-head"><h2>Save folder</h2><button class="btn small" type="button" id="folderClose">Close</button></div>
+        <p id="folderText"></p>
+        <div class="actions" style="margin-top:12px"><button class="btn primary" type="button" id="folderPick">Choose folder</button><button class="btn" type="button" id="folderClear">Use Downloads instead</button><span class="sheet-note" id="folderMsg"></span></div>
       </section>
 
       <!-- HELPERS (owner) -->
@@ -2063,7 +2071,74 @@ function getDownloads() {
   if (!dlPromise) dlPromise = (window.claude && window.claude.use) ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
   return dlPromise;
 }
+/* Save folder: Chrome and Edge can write straight into a folder the user picked once.
+   The folder handle is kept in this browser (IndexedDB); other browsers use normal downloads. */
+const FOLDER = { supported: typeof window.showDirectoryPicker === 'function', handle: null, name: '' };
+function kvDb() {
+  return new Promise((ok, bad) => { const r = indexedDB.open('ict-lab-loan-desk', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => ok(r.result); r.onerror = () => bad(r.error); });
+}
+async function kv(key, value) {
+  const db = await kvDb();
+  return new Promise((ok, bad) => {
+    const tx = db.transaction('kv', value === undefined ? 'readonly' : 'readwrite'), st = tx.objectStore('kv');
+    const r = value === undefined ? st.get(key) : value === null ? st.delete(key) : st.put(value, key);
+    r.onsuccess = () => ok(r.result); r.onerror = () => bad(r.error);
+  });
+}
+async function loadFolder() {
+  if (!FOLDER.supported) return;
+  try { const h = await kv('saveFolder'); if (h) { FOLDER.handle = h; FOLDER.name = h.name; } } catch (e) {}
+  renderFolderBtn();
+}
+function renderFolderBtn() {
+  const b = $('#folderBtn'); b.hidden = !FOLDER.supported || S.mode === 'db';
+  $('#folderBtnText').textContent = FOLDER.handle ? FOLDER.name : 'Save folder: Downloads';
+  b.title = FOLDER.handle ? `Exports are saved in the folder “${FOLDER.name}”` : 'Exports go to your Downloads folder. Click to choose a folder.';
+}
+function openFolderPanel() {
+  $('#folderText').innerHTML = FOLDER.handle
+    ? `Exported PDF and Excel files are saved straight into the folder <b>${esc(FOLDER.name)}</b>. The browser may ask for permission again after it restarts; choose <b>Allow</b>.`
+    : 'Exported PDF and Excel files go to your Downloads folder. Choose a folder to save them there automatically instead.';
+  $('#folderClear').hidden = !FOLDER.handle; $('#folderMsg').textContent = '';
+  $('#folderPanel').hidden = false; $('#folderPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+$('#folderBtn').addEventListener('click', openFolderPanel);
+$('#folderClose').addEventListener('click', () => { $('#folderPanel').hidden = true; });
+$('#folderPick').addEventListener('click', async () => {
+  try {
+    const h = await window.showDirectoryPicker({ id: 'ict-lab-save-folder', mode: 'readwrite', startIn: FOLDER.handle || 'documents' });
+    FOLDER.handle = h; FOLDER.name = h.name;
+    try { await kv('saveFolder', h); } catch (e) {}
+    renderFolderBtn(); openFolderPanel(); toast(`Exports will be saved in “${h.name}”.`);
+  } catch (e) { if (e && e.name !== 'AbortError') $('#folderMsg').textContent = 'That folder can’t be used. Choose another folder.'; }
+});
+$('#folderClear').addEventListener('click', async () => {
+  FOLDER.handle = null; FOLDER.name = '';
+  try { await kv('saveFolder', null); } catch (e) {}
+  renderFolderBtn(); openFolderPanel(); toast('Exports will go to your Downloads folder.');
+});
+// Writes the file into the save folder. Returns false when that isn't possible (then a normal download is used).
+async function saveToFolder(filename, blob) {
+  const h = FOLDER.handle; if (!h) return false;
+  try {
+    let p = await h.queryPermission({ mode: 'readwrite' });
+    if (p !== 'granted') p = await h.requestPermission({ mode: 'readwrite' });
+    if (p !== 'granted') return false;
+    // never overwrite: "name.pdf", "name (2).pdf", ...
+    const dot = filename.lastIndexOf('.'), base = dot > 0 ? filename.slice(0, dot) : filename, ext = dot > 0 ? filename.slice(dot) : '';
+    let name = filename;
+    for (let n = 2; n < 100; n++) { try { await h.getFileHandle(name); name = `${base} (${n})${ext}`; } catch (e) { break; } }
+    const fh = await h.getFileHandle(name, { create: true }), w = await fh.createWritable();
+    await w.write(blob); await w.close();
+    toast(`Saved “${name}” in ${h.name}`);
+    return name;
+  } catch (e) { return false; }
+}
+// Where the last file went, for messages such as the email reminder.
+let lastSaveWhere = 'Downloads';
 async function offerFile(filename, blob) {
+  if (FOLDER.handle) { const name = await saveToFolder(filename, blob); if (name) { lastSaveWhere = FOLDER.name; return name; } toast('Could not save in the save folder, so the file was downloaded instead.', 'bad'); }
+  lastSaveWhere = 'Downloads';
   const dl = await getDownloads();
   if (dl) {
     try { await dl.save({ filename, data: blob }); toast('Saved ' + filename); }
@@ -2076,6 +2151,7 @@ async function offerFile(filename, blob) {
   }
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  return filename;
 }
 const loanFileBase = l => `Loan record - ${safeFile(l.names)} - ${l.startDate || todayISO()}`;
 
@@ -2169,12 +2245,12 @@ async function emailLoan(l) {
   if (!list.length) { toast('This loan has no email address. Add one first.', 'bad'); return; }
   const blob = await buildXlsx(l); if (!blob) return;
   const filename = loanFileBase(l) + '.xlsx';
-  await offerFile(filename, blob);
+  const savedAs = (await offerFile(filename, blob)) || filename;
   const subject = `ICT Laboratory equipment loan ${l.ref || ''}`.trim();
   const href = `mailto:${list.map(e => encodeURIComponent(e).replace('%40', '@')).join(',')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(loanEmailBody(l))}`;
   setTimeout(() => {
     const a = document.createElement('a'); a.href = href; document.body.appendChild(a); a.click(); a.remove();
-    toast(`Email to ${to} opened. Attach “${filename}” from your Downloads folder, then send.`);
+    toast(`Email to ${to} opened. Attach “${savedAs}” from ${lastSaveWhere === 'Downloads' ? 'your Downloads folder' : 'the folder “' + lastSaveWhere + '”'}, then send.`);
   }, 400);
 }
 async function saveLoanEmail(l, raw) {
@@ -2668,6 +2744,7 @@ document.addEventListener('paste', e => {
 for (const i of document.querySelectorAll('.num-step input[type=number]')) syncStepButtons(i);
 
 /* ---------- boot ---------- */
+loadFolder();
 resetLoanForm();
 setView((location.hash || '').slice(1) || 'inventory', false);
 renderAll();

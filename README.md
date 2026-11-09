@@ -61,6 +61,11 @@ It keeps track of the lab's devices, records who has borrowed what, produces the
 - **Export to Excel**: with nothing selected, exports every entry that matches the search and filter; with a selection, only the selected entries. The file has Timestamp, User, Category, Action and Description columns with filters.
 - **Select** shows a checkbox on every entry; **Select all** picks every entry that matches the search and filter. **Delete** (bin icon) removes the selected entries from `history.json` after a confirmation. The data repository's commit list still keeps an older copy.
 
+### Save folder
+- In Chrome and Edge, the **Save folder** button at the bottom of the sidebar lets you choose a folder once (for example **DocumentsICT Loan Desk**). From then on every PDF and Excel export (loan records, inventory, history, the file for Email to borrower) is saved straight into that folder instead of Downloads. Files are never overwritten: a second copy gets "(2)" and so on.
+- The choice is kept in that browser. After the browser restarts it may ask once for permission to save in the folder; choose **Allow**.
+- **Use Downloads instead** goes back to normal downloads. Other browsers (Firefox, Safari) always use normal downloads.
+
 ### General
 - Sidebar with lab totals: units in stock, out on loan, available now and overdue loans.
 - Karelia green theme with **Light**, **Dark** and **Auto** modes (button at the bottom of the sidebar).
@@ -159,6 +164,7 @@ The app uses [jsPDF](https://github.com/parallax/jsPDF) for PDF files and [Excel
 
 New features are listed here, newest first.
 
+- **2026-11-09**: Save folder: exports go straight into a chosen folder (Chrome and Edge).
 - **2026-11-09**: New loan dates in dd.mm.yyyy with a calendar button; "No fixed return date" option.
 - **2026-11-06**: Project members are names only; one email per loan.
 - **2026-11-06**: Several borrowers per loan (+ Add member) for project groups; Fill from request form reads the new request form (Full Name, Email) and several names.
