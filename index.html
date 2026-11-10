@@ -264,6 +264,9 @@ input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none;appeara
 .member-row .rm{flex:none;height:36px;width:34px;border:1px solid var(--line-strong);background:var(--surface);border-radius:3px;color:var(--muted);font-size:1.15rem;cursor:pointer}
 .member-row .rm:hover{background:var(--bad-soft);color:var(--bad)}
 @media (max-width:640px){.member-row{grid-template-columns:minmax(0,1fr)}}
+input:disabled,textarea:disabled,select:disabled{background:var(--sunken);color:var(--muted);cursor:not-allowed}
+.link-btn:disabled{opacity:.45;cursor:not-allowed;text-decoration:none}
+.mode-box{border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line));background:var(--info-soft);border-radius:4px;padding:12px 18px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 .req-box{border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));background:var(--info-soft);border-radius:4px;padding:14px 18px;display:grid;gap:8px}
 .req-box ul{margin:0;padding-left:20px}
 .req-box .warn-list li{color:var(--warn)}
@@ -459,6 +462,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
           </div>
         </div>
         <div id="savedBox"></div>
+        <div id="modeBox"></div>
         <div id="reqBox"></div>
         <form id="loanForm" autocomplete="off" class="loan-grid">
           <div class="box">
@@ -1171,6 +1175,10 @@ function describeChange(col, old, body) {
   const l = body || old || {}, head = `${l.ref || ''} ${l.names || ''}`.trim();
   const units = it => (it || []).reduce((a, i) => a + (i.qty || 0), 0), back = it => (it || []).reduce((a, i) => a + (i.returnedQty || 0), 0);
   if (!body) return { action: 'Loan deleted', text: head };
+  if (old && body && units(body.items) > units(old.items)) {
+    const more = (body.items || []).map(i => { const o = (old.items || []).find(x => x.itemId === i.itemId && (x.serial || '') === (i.serial || '')); return [i, i.qty - (o ? o.qty : 0)]; }).filter(([, n]) => n > 0);
+    return { action: 'Equipment added', text: `${head}: ${more.map(([i, n]) => `${n} × ${i.name}`).join(', ')}` };
+  }
   if (!old) return { action: 'Loan created', text: `${head}: ${(body.items || []).map(i => `${i.qty} × ${i.name}`).join(', ')}; due ${dueText(body)}` };
   if (old.status !== 'returned' && body.status === 'returned') return { action: 'Loan returned', text: `${head}: all ${units(body.items)} unit(s) back` };
   if (old.status === 'returned' && body.status !== 'returned') return { action: 'Loan reopened', text: `${head}: ${back(body.items)} of ${units(body.items)} back` };
@@ -1780,6 +1788,7 @@ $('#draftTable').addEventListener('change', e => {
   d.qty = v; renderPicker(); renderDraft();
 });
 function resetLoanForm() {
+  if (S.addToLoan) setAddMode(null);
   $('#loanForm').reset(); S.draft = []; S.draftEdit = null; $('#pkClear').hidden = true;
   setOpenEnd(false); $('#lnStart').value = todayISO(); $('#lnEnd').value = addDays(todayISO(), 14); $('#lnEnd').min = todayISO();
   $('#memberList').innerHTML = '';
@@ -1813,6 +1822,61 @@ function formMembers() {
 }
 // All email addresses of a loan (main borrower and members).
 const loanEmails = l => [...new Set([emailIn(l.contact), ...(l.members || []).map(m => emailIn(m.email))].filter(Boolean).map(e => e.toLowerCase()))];
+/* ---------- add equipment to an existing loan, or start a new loan for the same borrower ---------- */
+const borrowerBox = () => $('#loanForm .box');
+function fillBorrowerFromLoan(l, withDates) {
+  const people = l.members && l.members.length ? l.members.map(m => m.name) : [l.names || ''];
+  $('#lnNames').value = people[0] || '';
+  for (const n of people.slice(1)) addMemberRow(n);
+  $('#lnContact').value = l.contact || '';
+  $('#lnGroup').value = l.group || ''; $('#lnCourse').value = l.course || '';
+  if (withDates) {
+    $('#lnStart').value = l.startDate || todayISO();
+    if (l.endDate) $('#lnEnd').value = l.endDate; else setOpenEnd(true);
+    $('#lnNotes').value = l.notes || '';
+  }
+}
+function setAddMode(l) {
+  S.addToLoan = l ? l.id : null;
+  for (const el of borrowerBox().querySelectorAll('input, textarea, button')) el.disabled = !!l;
+  if (!l) setOpenEnd($('#lnOpenEnd').checked);
+  $('#lnSave').textContent = l ? `Add to loan ${l.ref || ''}`.trim() : 'Save loan';
+  $('#modeBox').innerHTML = l ? `<div class="mode-box"><span><b>Adding equipment to loan ${esc(l.ref || '')}</b> · ${esc(l.names)}. Borrower and dates come from that loan. Pick the extra devices, then press <b>Add to loan</b>.</span>
+    <button type="button" class="btn small" id="modeCancel">Cancel</button></div>` : '';
+}
+function startAddToLoan(l) {
+  S.lastSaved = null; renderSaved(); S.reqReport = null; renderReqBox();
+  resetLoanForm(); fillBorrowerFromLoan(l, true); setAddMode(l);
+  setView('new'); window.scrollTo({ top: 0, behavior: 'smooth' });
+  setTimeout(() => $('#pkSearch').focus(), 300);
+}
+function startNewLoanFor(l) {
+  S.lastSaved = null; renderSaved(); S.reqReport = null; renderReqBox();
+  resetLoanForm(); fillBorrowerFromLoan(l, false);
+  setView('new'); window.scrollTo({ top: 0, behavior: 'smooth' });
+  toast(`New loan for ${l.names}. Their details are filled in.`);
+}
+$('#modeBox').addEventListener('click', e => { if (e.target.id === 'modeCancel') { resetLoanForm(); toast('Adding equipment cancelled.'); } });
+async function addDraftToLoan() {
+  const l = S.loans.get(S.addToLoan);
+  if (!l) { toast('That loan no longer exists.', 'bad'); resetLoanForm(); return; }
+  if (!S.draft.length) { toast('Add at least one device first.', 'bad'); return; }
+  for (const d of S.draft) if (!S.inv.get(d.itemId)) { toast(`${d.name} is no longer in the inventory.`, 'bad'); return; }
+  const items = (l.items || []).map(i => ({ ...i }));
+  for (const d of S.draft) {
+    const same = items.find(i => i.itemId === d.itemId && (i.serial || '') === (d.serial || ''));
+    if (same) same.qty += d.qty; else items.push({ itemId: d.itemId, name: d.name, serial: d.serial, qty: d.qty, returnedQty: 0 });
+  }
+  const upd = { ...l, items, status: 'active', returnedAt: null }; delete upd.id;
+  const added = S.draft.reduce((a, d) => a + d.qty, 0);
+  $('#lnSave').disabled = true;
+  const ok = await writeDoc('loans', l.id, upd);
+  $('#lnSave').disabled = false;
+  if (!ok) return;
+  toast(`Added ${added} unit${added === 1 ? '' : 's'} to loan ${l.ref || ''}.`);
+  resetLoanForm();
+  S.openLoan = l.id; S.retDraft = null; S.loanFilter = 'open'; setView('loans'); renderAll();
+}
 $('#lnClear').addEventListener('click', () => { resetLoanForm(); S.lastSaved = null; renderSaved(); S.reqReport = null; renderReqBox(); });
 
 /* ---------- fill the form from a filled-in loan request (the lab's Excel template) ----------
@@ -1949,6 +2013,7 @@ function makeRef(start) {
 }
 $('#loanForm').addEventListener('submit', async e => {
   e.preventDefault();
+  if (S.addToLoan) { addDraftToLoan(); return; }
   const openEnd = $('#lnOpenEnd').checked;
   const names = $('#lnNames').value.trim(), start = $('#lnStart').value, end = openEnd ? '' : $('#lnEnd').value;
   if (!names) { toast('Enter the borrower name.', 'bad'); return; }
@@ -2072,6 +2137,7 @@ function renderDetail() {
     </dl>
     <div class="actions" style="margin-top:12px"><button class="btn small" data-d="pdf">Download PDF</button><button class="btn small" data-d="xlsx">Download Excel</button><button class="btn small" data-d="print">Print</button>
       ${loanEmails(l).length ? `<button class="btn small primary" data-d="email" title="Send the Excel record to ${esc(loanEmails(l).join(', '))}">Email to borrower${loanEmails(l).length > 1 ? 's' : ''}</button>` : `<button class="btn small" data-d="addemail">Add email</button>`}</div>
+    <div class="actions" style="margin-top:8px"><button class="btn small" data-d="addmore" title="Add more devices to this loan">+ Add equipment</button><button class="btn small" data-d="newloan" title="Start a new loan with this borrower's details">New loan for this borrower</button></div>
     ${S.addingEmail === l.id ? `<div class="actions email-add"><input type="email" id="loanEmailInput" placeholder="borrower@edu.karelia.fi" aria-label="Borrower email"><button class="btn small primary" data-d="saveemail">Save</button><button class="btn small" data-d="cancelemail">Cancel</button></div>` : ''}
     <hr class="divider">
     <h3 style="margin-bottom:6px">Return check</h3>
@@ -2117,6 +2183,8 @@ $('#loanDetail').addEventListener('click', async e => {
   const b = e.target.closest('[data-d]'); if (!b) return;
   switch (b.dataset.d) {
     case 'pdf': exportPdf(l); break;
+    case 'addmore': startAddToLoan(l); break;
+    case 'newloan': startNewLoanFor(l); break;
     case 'xlsx': exportXlsx(l); break;
     case 'print': printLoan(l); break;
     case 'email': emailLoan(l); break;

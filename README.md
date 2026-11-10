@@ -53,6 +53,8 @@ It keeps track of the lab's devices, records who has borrowed what, produces the
 ### Loans and returns
 - Tabs for **Out now**, **Overdue**, **Returned** and **All**, plus search by name, group, course, device or serial.
 - Open a loan to download, print or email its record again.
+- **+ Add equipment**: add more devices to the same loan. New loan opens in "adding to loan" mode with the borrower and dates of that loan (locked); pick the extra devices and press **Add to loan**. Devices already on the loan get a higher number, new ones are added as new lines. History shows "Equipment added". **Cancel** leaves the mode.
+- **New loan for this borrower**: opens a new loan with the same names, email, group and course filled in.
 - **Return check**: enter how many of each item came back, or use **All back** / **Mark everything back**. Partial returns keep the loan open and show what is still missing. When everything is back the loan closes and the equipment counts as available again.
 - Return notes for damage, missing cables and so on.
 
@@ -167,6 +169,7 @@ The app uses [jsPDF](https://github.com/parallax/jsPDF) for PDF files and [Excel
 
 New features are listed here, newest first.
 
+- **2026-11-10**: Loan page: + Add equipment to an existing loan, and New loan for this borrower.
 - **2026-11-10**: × to clear every text box.
 - **2026-11-10**: New loan: device search, − / + and Edit on added devices.
 - **2026-11-09**: Save folder: exports go straight into a chosen folder (Chrome and Edge).
