@@ -69,6 +69,7 @@ It keeps track of the lab's devices, records who has borrowed what, produces the
 - **Use Downloads instead** goes back to normal downloads. Other browsers (Firefox, Safari) always use normal downloads.
 
 ### General
+- Every text box has a small **×** on the right that clears it (shown only when there is text). Number boxes use − / + instead.
 - Sidebar with lab totals: units in stock, out on loan, available now and overdue loans.
 - Karelia green theme with **Light**, **Dark** and **Auto** modes (button at the bottom of the sidebar).
 - Works on phones and narrow windows.
@@ -166,6 +167,7 @@ The app uses [jsPDF](https://github.com/parallax/jsPDF) for PDF files and [Excel
 
 New features are listed here, newest first.
 
+- **2026-11-10**: × to clear every text box.
 - **2026-11-10**: New loan: device search, − / + and Edit on added devices.
 - **2026-11-09**: Save folder: exports go straight into a chosen folder (Chrome and Edge).
 - **2026-11-09**: New loan dates in dd.mm.yyyy with a calendar button; "No fixed return date" option.

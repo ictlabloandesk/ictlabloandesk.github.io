@@ -240,6 +240,16 @@ tr.confirm td{background:var(--bad-soft)}
 .search-clear{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:26px;height:26px;border:0;border-radius:50%;background:none;color:var(--muted);font-size:1.15rem;line-height:1;cursor:pointer;display:grid;place-items:center}
 .search-clear:hover{background:var(--sunken);color:var(--ink)}
 .search-clear[hidden]{display:none}
+/* × to clear any text box (shown only when there is text) */
+.clear-wrap{position:relative;display:block;min-width:0}
+.date-box .clear-wrap,.member-name .clear-wrap{flex:1}
+.clear-wrap > input{padding-right:30px}
+.clear-wrap > textarea{padding-right:30px}
+.clear-x{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:24px;height:24px;border:0;border-radius:50%;background:none;color:var(--muted);font-size:1.1rem;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
+.clear-x:hover{background:var(--sunken);color:var(--ink)}
+.clear-wrap.is-area .clear-x{top:6px;transform:none}
+.clear-wrap > :placeholder-shown + .clear-x,.clear-wrap > :disabled + .clear-x,.clear-wrap > [readonly] + .clear-x{display:none}
+input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
 .draft-actions{display:flex;gap:6px;justify-content:flex-end}
 .draft-serial{width:100%;max-width:220px;padding:4px 8px}
 .member-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
@@ -469,7 +479,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
           <div class="box">
             <div class="box-head"><h2>Equipment</h2><span class="sheet-note">The paper record fits 10 lines per page.</span></div>
             <div class="picker">
-              <div class="field"><label for="pkSearch">Device/Component</label><div class="search-wrap"><input type="text" id="pkSearch" placeholder="Search or choose a device…"><button type="button" class="search-clear" id="pkClear" title="Clear" aria-label="Clear the device search" hidden>×</button></div><select id="pkItem" hidden tabindex="-1" aria-hidden="true"></select></div>
+              <div class="field"><label for="pkSearch">Device/Component</label><div class="search-wrap"><input type="text" id="pkSearch" placeholder="Search or choose a device…" data-noclear="1"><button type="button" class="search-clear" id="pkClear" title="Clear" aria-label="Clear the device search" hidden>×</button></div><select id="pkItem" hidden tabindex="-1" aria-hidden="true"></select></div>
               <div class="field"><label for="pkQty">Number</label><div class="num-step"><button type="button" class="icon" data-step="-1" aria-label="One less">−</button><input type="number" id="pkQty" min="1" step="1" value="1" inputmode="numeric"><button type="button" class="icon" data-step="1" aria-label="One more">+</button></div></div>
               <div class="field"><label for="pkSerial">Serial number</label><input type="text" id="pkSerial" placeholder="Optional"></div>
               <button type="button" class="btn accent" id="pkAdd">Add to loan</button>
@@ -2808,12 +2818,45 @@ document.addEventListener('paste', e => {
 }, true);
 for (const i of document.querySelectorAll('.num-step input[type=number]')) syncStepButtons(i);
 
+/* ---------- × to clear text boxes ----------
+   Every text box (also ones added later, like member rows) gets a small × that empties it. */
+const CLEARABLE = 'input[type=text],input[type=search],input[type=email],input[type=password],input:not([type]),textarea';
+function addClear(el) {
+  if (el.dataset.clear || el.dataset.noclear || el.hidden || !el.parentNode) return;
+  el.dataset.clear = '1';
+  if (!el.placeholder) el.placeholder = ' '; // lets the × hide itself while the box is empty
+  const hadFocus = document.activeElement === el, a = el.selectionStart, b = el.selectionEnd;
+  const wrap = document.createElement('span');
+  wrap.className = 'clear-wrap' + (el.tagName === 'TEXTAREA' ? ' is-area' : '');
+  el.parentNode.insertBefore(wrap, el); wrap.appendChild(el);
+  const x = document.createElement('button');
+  x.type = 'button'; x.className = 'clear-x'; x.tabIndex = -1; x.title = 'Clear'; x.setAttribute('aria-label', 'Clear this box'); x.textContent = '×';
+  wrap.appendChild(x);
+  if (hadFocus) { el.focus(); try { el.setSelectionRange(a, b); } catch (e) {} }
+}
+function addClearAll(root) {
+  if (root.matches && root.matches(CLEARABLE)) addClear(root);
+  if (root.querySelectorAll) for (const el of root.querySelectorAll(CLEARABLE)) addClear(el);
+}
+document.addEventListener('mousedown', e => { if (e.target.closest('.clear-x')) e.preventDefault(); }, true);
+document.addEventListener('click', e => {
+  const x = e.target.closest('.clear-x'); if (!x) return;
+  const el = x.previousElementSibling; if (!el || el.disabled || el.readOnly) return;
+  el.value = '';
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  el.focus();
+});
+new MutationObserver(muts => { for (const m of muts) for (const n of m.addedNodes) if (n.nodeType === 1) addClearAll(n); })
+  .observe(document.body, { childList: true, subtree: true });
+
 /* ---------- boot ---------- */
 loadFolder();
 resetLoanForm();
 setView((location.hash || '').slice(1) || 'inventory', false);
 renderAll();
 startStorage();
+addClearAll(document.body);
 </script>
 
 </body>
