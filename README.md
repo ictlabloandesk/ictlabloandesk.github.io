@@ -35,6 +35,8 @@ It keeps track of the lab's devices, records who has borrowed what, produces the
 - **No fixed return date**: tick it under End date when there is no known return date. The loan then has no due date, is never shown as overdue, and the loan record, loan page and email say "No fixed date". A request form with an empty End Date ticks it automatically.
 - The end date can't be before the start date. Moving the start date past the end date moves the end date to two weeks after the start.
 - Pick devices from the inventory with number and serial number. You can't lend more than is available.
+- **Device search**: type part of a device name, category or serial number in the Device/Component box, or click it to see every device with how many are available. Devices with none available can't be picked.
+- In the list of added devices, change the number with **− / +** (up to what is available), **Edit** the serial number, or **Remove** the line.
 - **Fill from request form** (top right): upload a filled-in copy of the lab's "ICT Laboratory Equipment Loan Request Form" (Excel). The form is filled in for you: Full Name, Group, Course, Email, Start and End date, the teacher (into Notes) and the devices with serial numbers and numbers. Devices are matched to the inventory by name, even when written a little differently, and limited to what is available. Several names in Full Name (separated by commas, "and" or new lines) become separate members. The Email row is used as the loan's email; if it is empty, the first person's email is taken from the borrower list. A summary shows what was added, which devices were not found or not available, and anything else to check. Nothing is saved until you press **Save loan**; the normal way of creating a loan is unchanged.
 - After saving: **Download PDF**, **Download Excel**, **Print** or **Email to borrower**.
 
@@ -164,6 +166,7 @@ The app uses [jsPDF](https://github.com/parallax/jsPDF) for PDF files and [Excel
 
 New features are listed here, newest first.
 
+- **2026-11-10**: New loan: device search, − / + and Edit on added devices.
 - **2026-11-09**: Save folder: exports go straight into a chosen folder (Chrome and Edge).
 - **2026-11-09**: New loan dates in dd.mm.yyyy with a calendar button; "No fixed return date" option.
 - **2026-11-06**: Project members are names only; one email per loan.

@@ -226,6 +226,8 @@ tr.confirm td{background:var(--bad-soft)}
 .date-btn:disabled,.date-text:disabled{opacity:.5;cursor:not-allowed}
 .date-native{position:absolute;right:0;bottom:0;width:36px;height:1px;opacity:0;pointer-events:none;border:0;padding:0}
 .open-end{margin-top:6px}
+.draft-actions{display:flex;gap:6px;justify-content:flex-end}
+.draft-serial{width:100%;max-width:220px;padding:4px 8px}
 .member-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .member-name{display:flex;gap:6px}
 .member-name input{flex:1;min-width:0}
@@ -453,7 +455,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
           <div class="box">
             <div class="box-head"><h2>Equipment</h2><span class="sheet-note">The paper record fits 10 lines per page.</span></div>
             <div class="picker">
-              <div class="field"><label for="pkItem">Device/Component</label><select id="pkItem"></select></div>
+              <div class="field"><label for="pkSearch">Device/Component</label><input type="text" id="pkSearch" placeholder="Search or choose a device…"><select id="pkItem" hidden tabindex="-1" aria-hidden="true"></select></div>
               <div class="field"><label for="pkQty">Number</label><div class="num-step"><button type="button" class="icon" data-step="-1" aria-label="One less">−</button><input type="number" id="pkQty" min="1" step="1" value="1" inputmode="numeric"><button type="button" class="icon" data-step="1" aria-label="One more">+</button></div></div>
               <div class="field"><label for="pkSerial">Serial number</label><input type="text" id="pkSerial" placeholder="Optional"></div>
               <button type="button" class="btn accent" id="pkAdd">Add to loan</button>
@@ -1657,18 +1659,37 @@ function availableFor(itemId) {
 function renderPicker() {
   const sel = $('#pkItem'), cur = sel.value;
   const items = sortedInv();
-  if (!items.length) { sel.innerHTML = `<option value="">Add devices in Inventory first</option>`; sel.disabled = true; $('#pkAdd').disabled = true; return; }
-  sel.disabled = false; $('#pkAdd').disabled = false;
+  if (!items.length) { sel.innerHTML = `<option value="">Add devices in Inventory first</option>`; sel.disabled = true; $('#pkAdd').disabled = true; $('#pkSearch').disabled = true; $('#pkSearch').placeholder = 'Add devices in Inventory first'; return; }
+  sel.disabled = false; $('#pkAdd').disabled = false; $('#pkSearch').disabled = false; $('#pkSearch').placeholder = 'Search or choose a device…';
   sel.innerHTML = `<option value="">Choose a device…</option>` + items.map(i => {
     const av = availableFor(i.id);
     return `<option value="${i.id}" ${av <= 0 ? 'disabled' : ''}>${esc(i.name)}${i.serial ? ' · ' + esc(i.serial) : ''} (${av} available)</option>`;
   }).join('');
   if (cur && S.inv.has(cur)) sel.value = cur;
 }
+// device search: type part of a name, category or serial, or click to see every device
+attachSuggest($('#pkSearch'), {
+  showAll: true,
+  find: q => {
+    const list = sortedInv().map(i => ({ ...i, av: availableFor(i.id) }));
+    return q ? rankMatches(list, q, ['name', 'category', 'serial'], (a, b) => (b.av > 0) - (a.av > 0) || (a.name || '').localeCompare(b.name || ''), 50) : list;
+  },
+  label: i => [i.name, [i.category, i.serial].filter(Boolean).join(' · '), i.av > 0 ? `${i.av} available` : 'none available'],
+  isFilled: i => $('#pkItem').value === i.id,
+  pick: i => {
+    if (i.av <= 0) { toast(`No ${i.name} available right now.`, 'bad'); return; }
+    $('#pkItem').value = i.id; $('#pkItem').dispatchEvent(new Event('change'));
+    $('#pkSearch').value = i.name; $('#pkQty').focus();
+  }
+});
+$('#pkSearch').addEventListener('input', () => {
+  const it = S.inv.get($('#pkItem').value);
+  if (it && $('#pkSearch').value.trim() !== it.name) $('#pkItem').value = '';
+});
 $('#pkItem').addEventListener('change', e => { const it = S.inv.get(e.target.value); $('#pkSerial').value = it?.serial || ''; $('#pkQty').value = 1; syncStepButtons($('#pkQty')); });
 $('#pkAdd').addEventListener('click', () => {
   const id = $('#pkItem').value, it = S.inv.get(id);
-  if (!it) { toast('Choose a device first.', 'bad'); return; }
+  if (!it) { toast('Choose a device first: type part of its name and pick it from the list.', 'bad'); $('#pkSearch').focus(); return; }
   const qty = int($('#pkQty').value);
   if (qty < 1) { toast('Number must be at least 1.', 'bad'); return; }
   const av = availableFor(id);
@@ -1676,21 +1697,53 @@ $('#pkAdd').addEventListener('click', () => {
   const serial = $('#pkSerial').value.trim();
   const same = S.draft.find(d => d.itemId === id && d.serial === serial);
   if (same) same.qty += qty; else S.draft.push({ key: uid(), itemId: id, name: it.name, serial, qty });
-  $('#pkItem').value = ''; $('#pkSerial').value = ''; $('#pkQty').value = 1; syncStepButtons($('#pkQty'));
+  $('#pkItem').value = ''; $('#pkSearch').value = ''; $('#pkSerial').value = ''; $('#pkQty').value = 1; syncStepButtons($('#pkQty'));
   renderPicker(); renderDraft();
 });
 function renderDraft() {
   const box = $('#draftTable');
-  if (!S.draft.length) { box.innerHTML = `<div class="empty"><strong>Nothing added yet</strong><span>Choose a device, set the number, and press “Add to loan”.</span></div>`; return; }
+  if (!S.draft.length) { box.innerHTML = `<div class="empty"><strong>Nothing added yet</strong><span>Search for a device, set the number, and press “Add to loan”.</span></div>`; return; }
   box.innerHTML = `<div class="table-wrap"><table>
     <thead><tr><th>Item</th><th>Device/Component</th><th>Serial number</th><th class="ctr">Number</th><th></th></tr></thead>
-    <tbody>${S.draft.map((d, i) => `<tr><td class="mono">${i + 1}</td><td class="dev-name">${esc(d.name)}</td>
-      <td>${d.serial ? `<span class="serial">${esc(d.serial)}</span>` : '<span class="muted">–</span>'}</td>
-      <td class="ctr mono">${d.qty}</td><td class="num"><button type="button" class="btn small danger" data-rm="${d.key}">Remove</button></td></tr>`).join('')}</tbody></table></div>`;
+    <tbody>${S.draft.map((d, i) => {
+      const max = d.qty + Math.max(0, availableFor(d.itemId)), editing = S.draftEdit === d.key;
+      return `<tr><td class="mono">${i + 1}</td><td class="dev-name">${esc(d.name)}</td>
+      <td>${editing ? `<input type="text" class="draft-serial" id="draftSerial" value="${esc(d.serial)}" placeholder="Serial number" aria-label="Serial number of ${esc(d.name)}">`
+        : d.serial ? `<span class="serial">${esc(d.serial)}</span>` : '<span class="muted">–</span>'}</td>
+      <td class="ctr"><div class="stepper"><button type="button" class="icon" data-step="-1" aria-label="One less ${esc(d.name)}" ${d.qty <= 1 ? 'disabled' : ''}>−</button><input class="ret-input" type="number" min="1" max="${max}" step="1" value="${d.qty}" inputmode="numeric" data-dq="${d.key}" aria-label="Number of ${esc(d.name)}"><button type="button" class="icon" data-step="1" aria-label="One more ${esc(d.name)}" ${d.qty >= max ? 'disabled' : ''}>+</button></div></td>
+      <td class="num"><div class="draft-actions">${editing
+        ? `<button type="button" class="btn small primary" data-ed-save="${d.key}">Save</button><button type="button" class="btn small" data-ed-cancel="1">Cancel</button>`
+        : `<button type="button" class="btn small" data-ed="${d.key}">Edit</button><button type="button" class="btn small danger" data-rm="${d.key}">Remove</button>`}</div></td></tr>`;
+    }).join('')}</tbody></table></div>`;
 }
-$('#draftTable').addEventListener('click', e => { const b = e.target.closest('[data-rm]'); if (!b) return; S.draft = S.draft.filter(d => d.key !== b.dataset.rm); renderPicker(); renderDraft(); });
+$('#draftTable').addEventListener('click', e => {
+  const rm = e.target.closest('[data-rm]'), ed = e.target.closest('[data-ed]'), save = e.target.closest('[data-ed-save]'), cancel = e.target.closest('[data-ed-cancel]');
+  if (rm) { S.draft = S.draft.filter(d => d.key !== rm.dataset.rm); S.draftEdit = null; renderPicker(); renderDraft(); }
+  else if (ed) { S.draftEdit = ed.dataset.ed; renderDraft(); const i = $('#draftSerial'); if (i) { i.focus(); i.select(); } }
+  else if (save) saveDraftSerial(save.dataset.edSave);
+  else if (cancel) { S.draftEdit = null; renderDraft(); }
+});
+function saveDraftSerial(key) {
+  const d = S.draft.find(x => x.key === key), i = $('#draftSerial');
+  if (d && i) d.serial = i.value.trim();
+  S.draftEdit = null; renderDraft();
+}
+$('#draftTable').addEventListener('keydown', e => {
+  if (e.target.id !== 'draftSerial') return;
+  if (e.key === 'Enter') { e.preventDefault(); saveDraftSerial(S.draftEdit); }
+  if (e.key === 'Escape') { S.draftEdit = null; renderDraft(); }
+});
+// number changed with − / + or typed: never above what is available
+$('#draftTable').addEventListener('change', e => {
+  const inp = e.target.closest('input[data-dq]'); if (!inp) return;
+  const d = S.draft.find(x => x.key === inp.dataset.dq); if (!d) return;
+  const max = d.qty + Math.max(0, availableFor(d.itemId));
+  const v = Math.min(max, Math.max(1, int(inp.value)));
+  if (int(inp.value) > max) toast(`Only ${max} ${d.name} available.`, 'bad');
+  d.qty = v; renderPicker(); renderDraft();
+});
 function resetLoanForm() {
-  $('#loanForm').reset(); S.draft = [];
+  $('#loanForm').reset(); S.draft = []; S.draftEdit = null;
   setOpenEnd(false); $('#lnStart').value = todayISO(); $('#lnEnd').value = addDays(todayISO(), 14); $('#lnEnd').min = todayISO();
   $('#memberList').innerHTML = '';
   renderPicker(); renderDraft();
@@ -2402,7 +2455,7 @@ function markMatch(text, q) {
   if (i < 0) return esc(t);
   return esc(t.slice(0, i)) + '<mark>' + esc(t.slice(i, i + q.length)) + '</mark>' + esc(t.slice(i + q.length));
 }
-function rankMatches(list, q, fields, tie) {
+function rankMatches(list, q, fields, tie, limit = 8) {
   const ql = q.trim().toLowerCase(); if (!ql) return [];
   return list.map(p => {
     let score = -1;
@@ -2415,7 +2468,7 @@ function rankMatches(list, q, fields, tie) {
     return { p, score };
   }).filter(x => x.score >= 0)
     .sort((a, b) => b.score - a.score || tie(a.p, b.p))
-    .slice(0, 8).map(x => x.p);
+    .slice(0, limit).map(x => x.p);
 }
 // People who borrowed before come first, then the rest of the student and staff list.
 const findPeople = (q, fields) => rankMatches(peopleList(), q, fields,
