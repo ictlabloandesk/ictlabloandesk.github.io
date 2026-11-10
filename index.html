@@ -248,6 +248,12 @@ tr.confirm td{background:var(--bad-soft)}
 .clear-x{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:24px;height:24px;border:0;border-radius:50%;background:none;color:var(--muted);font-size:1.1rem;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
 .clear-x:hover{background:var(--sunken);color:var(--ink)}
 .clear-wrap.is-area .clear-x{top:6px;transform:none}
+/* boxes with a suggestion list (e.g. Category): × first, then our own ▼ at the right edge */
+.clear-wrap > input[list]{padding-right:58px}
+.clear-wrap > input[list]::-webkit-calendar-picker-indicator{display:none !important}
+.clear-wrap > input[list] + .clear-x{right:30px}
+.list-btn{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:24px;height:24px;border:0;border-radius:3px;background:none;color:var(--muted);cursor:pointer;display:grid;place-items:center;padding:0}
+.list-btn:hover{background:var(--sunken);color:var(--ink)}
 .clear-wrap > :placeholder-shown + .clear-x,.clear-wrap > :disabled + .clear-x,.clear-wrap > [readonly] + .clear-x{display:none}
 input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
 .draft-actions{display:flex;gap:6px;justify-content:flex-end}
@@ -2832,6 +2838,14 @@ function addClear(el) {
   const x = document.createElement('button');
   x.type = 'button'; x.className = 'clear-x'; x.tabIndex = -1; x.title = 'Clear'; x.setAttribute('aria-label', 'Clear this box'); x.textContent = '×';
   wrap.appendChild(x);
+  if (el.hasAttribute('list')) { // our own ▼ that opens the suggestion list
+    const d = document.createElement('button');
+    d.type = 'button'; d.className = 'list-btn'; d.tabIndex = -1; d.title = 'Show the list'; d.setAttribute('aria-label', 'Show the list');
+    d.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1 3l4 4 4-4z" fill="currentColor"/></svg>';
+    d.addEventListener('mousedown', e => e.preventDefault());
+    d.addEventListener('click', () => { el.focus(); try { el.showPicker(); } catch (e) {} });
+    wrap.appendChild(d);
+  }
   if (hadFocus) { el.focus(); try { el.setSelectionRange(a, b); } catch (e) {} }
 }
 function addClearAll(root) {
