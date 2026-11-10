@@ -235,6 +235,11 @@ tr.confirm td{background:var(--bad-soft)}
 .date-btn:disabled,.date-text:disabled{opacity:.5;cursor:not-allowed}
 .date-native{position:absolute;right:0;bottom:0;width:36px;height:1px;opacity:0;pointer-events:none;border:0;padding:0}
 .open-end{margin-top:6px}
+.search-wrap{position:relative}
+.search-wrap input{padding-right:32px}
+.search-clear{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:26px;height:26px;border:0;border-radius:50%;background:none;color:var(--muted);font-size:1.15rem;line-height:1;cursor:pointer;display:grid;place-items:center}
+.search-clear:hover{background:var(--sunken);color:var(--ink)}
+.search-clear[hidden]{display:none}
 .draft-actions{display:flex;gap:6px;justify-content:flex-end}
 .draft-serial{width:100%;max-width:220px;padding:4px 8px}
 .member-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
@@ -464,7 +469,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
           <div class="box">
             <div class="box-head"><h2>Equipment</h2><span class="sheet-note">The paper record fits 10 lines per page.</span></div>
             <div class="picker">
-              <div class="field"><label for="pkSearch">Device/Component</label><input type="text" id="pkSearch" placeholder="Search or choose a device…"><select id="pkItem" hidden tabindex="-1" aria-hidden="true"></select></div>
+              <div class="field"><label for="pkSearch">Device/Component</label><div class="search-wrap"><input type="text" id="pkSearch" placeholder="Search or choose a device…"><button type="button" class="search-clear" id="pkClear" title="Clear" aria-label="Clear the device search" hidden>×</button></div><select id="pkItem" hidden tabindex="-1" aria-hidden="true"></select></div>
               <div class="field"><label for="pkQty">Number</label><div class="num-step"><button type="button" class="icon" data-step="-1" aria-label="One less">−</button><input type="number" id="pkQty" min="1" step="1" value="1" inputmode="numeric"><button type="button" class="icon" data-step="1" aria-label="One more">+</button></div></div>
               <div class="field"><label for="pkSerial">Serial number</label><input type="text" id="pkSerial" placeholder="Optional"></div>
               <button type="button" class="btn accent" id="pkAdd">Add to loan</button>
@@ -1688,10 +1693,17 @@ attachSuggest($('#pkSearch'), {
   pick: i => {
     if (i.av <= 0) { toast(`No ${i.name} available right now.`, 'bad'); return; }
     $('#pkItem').value = i.id; $('#pkItem').dispatchEvent(new Event('change'));
-    $('#pkSearch').value = i.name; $('#pkQty').focus();
+    $('#pkSearch').value = i.name; syncPkClear(); $('#pkQty').focus();
   }
 });
+const syncPkClear = () => { $('#pkClear').hidden = !$('#pkSearch').value; };
+$('#pkClear').addEventListener('mousedown', e => e.preventDefault());
+$('#pkClear').addEventListener('click', () => {
+  const i = $('#pkSearch'); i.value = ''; $('#pkItem').value = ''; $('#pkSerial').value = ''; syncPkClear();
+  i.dispatchEvent(new Event('input', { bubbles: true })); i.focus();
+});
 $('#pkSearch').addEventListener('input', () => {
+  syncPkClear();
   const it = S.inv.get($('#pkItem').value);
   if (it && $('#pkSearch').value.trim() !== it.name) $('#pkItem').value = '';
 });
@@ -1706,7 +1718,7 @@ $('#pkAdd').addEventListener('click', () => {
   const serial = $('#pkSerial').value.trim();
   const same = S.draft.find(d => d.itemId === id && d.serial === serial);
   if (same) same.qty += qty; else S.draft.push({ key: uid(), itemId: id, name: it.name, serial, qty });
-  $('#pkItem').value = ''; $('#pkSearch').value = ''; $('#pkSerial').value = ''; $('#pkQty').value = 1; syncStepButtons($('#pkQty'));
+  $('#pkItem').value = ''; $('#pkSearch').value = ''; syncPkClear(); $('#pkSerial').value = ''; $('#pkQty').value = 1; syncStepButtons($('#pkQty'));
   renderPicker(); renderDraft();
 });
 function renderDraft() {
@@ -1752,7 +1764,7 @@ $('#draftTable').addEventListener('change', e => {
   d.qty = v; renderPicker(); renderDraft();
 });
 function resetLoanForm() {
-  $('#loanForm').reset(); S.draft = []; S.draftEdit = null;
+  $('#loanForm').reset(); S.draft = []; S.draftEdit = null; $('#pkClear').hidden = true;
   setOpenEnd(false); $('#lnStart').value = todayISO(); $('#lnEnd').value = addDays(todayISO(), 14); $('#lnEnd').min = todayISO();
   $('#memberList').innerHTML = '';
   renderPicker(); renderDraft();
